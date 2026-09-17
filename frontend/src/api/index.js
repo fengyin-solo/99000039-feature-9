@@ -46,6 +46,7 @@ export const linksApi = {
   addToReadLater: (id, review_date) => api.post(`/links/${id}/read-later`, { review_date }),
   removeFromReadLater: (id) => api.delete(`/links/${id}/read-later`),
   updateReviewStatus: (id, review_status) => api.put(`/links/${id}/review-status`, { review_status }),
+  recordVisit: (id) => api.post(`/links/${id}/visit`),
 }
 
 // Categories API

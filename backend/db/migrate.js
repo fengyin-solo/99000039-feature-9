@@ -24,6 +24,18 @@ function migrateDatabase() {
       db.exec("ALTER TABLE links ADD COLUMN review_status TEXT DEFAULT 'pending' CHECK(review_status IN ('pending', 'completed', 'skipped'))");
       console.log('Added column: review_status');
     }
+
+    if (!columns.includes('read_later_added_at')) {
+      db.exec('ALTER TABLE links ADD COLUMN read_later_added_at DATETIME');
+      // Backfill existing read later entries so they keep a stable add time
+      db.exec('UPDATE links SET read_later_added_at = created_at WHERE is_read_later = 1 AND read_later_added_at IS NULL');
+      console.log('Added column: read_later_added_at');
+    }
+
+    if (!columns.includes('last_visited_at')) {
+      db.exec('ALTER TABLE links ADD COLUMN last_visited_at DATETIME');
+      console.log('Added column: last_visited_at');
+    }
     
     console.log('Database migration completed successfully');
   } catch (error) {

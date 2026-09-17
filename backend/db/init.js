@@ -47,6 +47,8 @@ function initDatabase() {
       is_read_later INTEGER DEFAULT 0,
       review_date DATETIME,
       review_status TEXT DEFAULT 'pending' CHECK(review_status IN ('pending', 'completed', 'skipped')),
+      read_later_added_at DATETIME,
+      last_visited_at DATETIME,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
     );

@@ -81,8 +81,9 @@ router.post('/', (req, res) => {
   const db = getDb();
 
   const result = db.prepare(
-    'INSERT INTO links (user_id, url, title, description, category_id, status, is_read_later, review_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(userId, url, title, description || '', category_id || null, 'unchecked', is_read_later ? 1 : 0, review_date || null);
+    `INSERT INTO links (user_id, url, title, description, category_id, status, is_read_later, review_date, read_later_added_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE NULL END)`
+  ).run(userId, url, title, description || '', category_id || null, 'unchecked', is_read_later ? 1 : 0, review_date || null, is_read_later ? 1 : 0);
 
   const linkId = result.lastInsertRowid;
 
@@ -141,21 +142,15 @@ router.get('/read-later', (req, res) => {
   const countSql = `SELECT COUNT(*) as total FROM links l WHERE ${whereClause}`;
   const { total } = db.prepare(countSql).get(...params);
 
-  // Get read later links
+  // Get read later links, ordered by the time they were added
   const sql = `
     SELECT l.*, c.name as category_name, c.color as category_color
     FROM links l
     LEFT JOIN categories c ON l.category_id = c.id
     WHERE ${whereClause}
-    ORDER BY 
-      CASE l.review_status 
-        WHEN 'pending' THEN 1 
-        WHEN 'completed' THEN 2 
-        ELSE 3 
-      END,
-      l.review_date IS NULL,
-      l.review_date ASC,
-      l.created_at DESC
+    ORDER BY
+      l.read_later_added_at ASC,
+      l.id ASC
     LIMIT ? OFFSET ?
   `;
   const links = db.prepare(sql).all(...params, Number(limit), Number(offset));
@@ -213,7 +208,8 @@ router.post('/:id/read-later', (req, res) => {
 
   db.prepare(`
     UPDATE links
-    SET is_read_later = 1, review_date = ?, review_status = 'pending'
+    SET is_read_later = 1, review_date = ?, review_status = 'pending',
+        read_later_added_at = COALESCE(read_later_added_at, CURRENT_TIMESTAMP)
     WHERE id = ?
   `).run(review_date || null, id);
 
@@ -296,6 +292,26 @@ router.put('/:id/review-status', (req, res) => {
   });
 });
 
+// POST /api/links/:id/visit - Record a visit to the link
+router.post('/:id/visit', (req, res) => {
+  const { id } = req.params;
+  const userId = req.userId;
+
+  const db = getDb();
+
+  // Verify ownership
+  const link = db.prepare('SELECT * FROM links WHERE id = ? AND user_id = ?').get(id, userId);
+  if (!link) {
+    return res.status(404).json({ error: 'Link not found' });
+  }
+
+  db.prepare('UPDATE links SET last_visited_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
+
+  const { last_visited_at } = db.prepare('SELECT last_visited_at FROM links WHERE id = ?').get(id);
+
+  res.json({ last_visited_at });
+});
+
 // PUT /api/links/:id - Update a link
 router.put('/:id', (req, res) => {
   const { id } = req.params;
@@ -313,16 +329,18 @@ router.put('/:id', (req, res) => {
   // Update link
   db.prepare(`
     UPDATE links
-    SET url = ?, title = ?, description = ?, category_id = ?, is_read_later = ?, review_date = ?, review_status = ?
+    SET url = ?, title = ?, description = ?, category_id = ?, is_read_later = ?, review_date = ?, review_status = ?,
+        read_later_added_at = CASE WHEN ? = 1 THEN COALESCE(read_later_added_at, CURRENT_TIMESTAMP) ELSE read_later_added_at END
     WHERE id = ?
   `).run(
-    url || link.url, 
-    title || link.title, 
-    description ?? link.description, 
+    url || link.url,
+    title || link.title,
+    description ?? link.description,
     category_id ?? link.category_id,
     is_read_later !== undefined ? (is_read_later ? 1 : 0) : link.is_read_later,
     review_date !== undefined ? review_date : link.review_date,
     review_status || link.review_status,
+    is_read_later !== undefined ? (is_read_later ? 1 : 0) : link.is_read_later,
     id
   );
 

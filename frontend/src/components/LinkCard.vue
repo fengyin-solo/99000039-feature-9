@@ -3,7 +3,7 @@
     <div class="card-content">
       <div class="card-header">
         <h3 class="link-title">
-          <a :href="link.url" target="_blank" rel="noopener noreferrer">{{ link.title }}</a>
+          <a :href="link.url" target="_blank" rel="noopener noreferrer" @click="recordVisit">{{ link.title }}</a>
         </h3>
         <div class="header-actions">
           <el-tooltip :content="link.is_read_later ? '已加入稍后阅读' : '加入稍后阅读'" placement="top">
@@ -32,7 +32,24 @@
         </div>
       </div>
 
-      <p class="link-url">{{ displayUrl }}</p>
+      <div class="link-meta">
+        <span class="meta-item meta-domain" :title="link.url">
+          <el-icon><Link /></el-icon>
+          <span class="meta-text">{{ displayUrl }}</span>
+        </span>
+        <span class="meta-item" :title="link.last_visited_at ? `最近访问: ${formatFullDateTime(link.last_visited_at)}` : '从未访问'">
+          <el-icon><View /></el-icon>
+          <span class="meta-text">{{ link.last_visited_at ? `最近访问 ${formatDateTime(link.last_visited_at)}` : '从未访问' }}</span>
+        </span>
+        <span
+          v-if="link.is_read_later && link.read_later_added_at"
+          class="meta-item"
+          :title="`加入稍后阅读: ${formatFullDateTime(link.read_later_added_at)}`"
+        >
+          <el-icon><Collection /></el-icon>
+          <span class="meta-text">加入 {{ formatDateTime(link.read_later_added_at) }}</span>
+        </span>
+      </div>
       <p class="link-description" v-if="link.description">{{ link.description }}</p>
 
       <div class="card-footer">
@@ -70,7 +87,7 @@
 <script setup>
 import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Clock } from '@element-plus/icons-vue'
+import { Clock, Link, View, Collection } from '@element-plus/icons-vue'
 import { linksApi } from '../api'
 import { useLinksStore } from '../stores/links'
 
@@ -92,6 +109,35 @@ const displayUrl = computed(() => {
     return props.link.url
   }
 })
+
+// SQLite CURRENT_TIMESTAMP 存的是 UTC 时间，按 UTC 解析再转本地显示
+function parseDateTime(dateStr) {
+  return new Date(String(dateStr).replace(' ', 'T') + 'Z')
+}
+
+function formatDateTime(dateStr) {
+  if (!dateStr) return ''
+  return parseDateTime(dateStr).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatFullDateTime(dateStr) {
+  if (!dateStr) return ''
+  return parseDateTime(dateStr).toLocaleString('zh-CN')
+}
+
+async function recordVisit() {
+  try {
+    const { data } = await linksApi.recordVisit(props.link.id)
+    props.link.last_visited_at = data.last_visited_at
+  } catch {
+    // 记录访问失败不影响正常打开链接
+  }
+}
 
 async function handleReadLater() {
   try {
@@ -175,13 +221,32 @@ function handleCommand(command) {
   color: #409eff;
 }
 
-.link-url {
+.link-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin: 0 0 8px 0;
   font-size: 12px;
   color: #909399;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.meta-item.meta-domain {
+  flex-shrink: 1;
+  overflow: hidden;
+}
+
+.meta-domain .meta-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .link-description {

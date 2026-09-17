@@ -80,9 +80,24 @@
           </div>
         </div>
 
-        <a :href="link.url" target="_blank" class="card-title">
+        <a :href="link.url" target="_blank" class="card-title" @click="recordVisit(link)">
           {{ link.title }}
         </a>
+
+        <div class="card-info">
+          <span class="info-item info-domain" :title="link.url">
+            <el-icon><Link /></el-icon>
+            <span class="info-text">{{ getDomain(link.url) }}</span>
+          </span>
+          <span class="info-item" :title="link.last_visited_at ? `最近访问: ${formatFullDateTime(link.last_visited_at)}` : '从未访问'">
+            <el-icon><View /></el-icon>
+            <span class="info-text">{{ link.last_visited_at ? `最近访问 ${formatDateTime(link.last_visited_at)}` : '从未访问' }}</span>
+          </span>
+          <span class="info-item" :title="`加入稍后阅读: ${formatFullDateTime(link.read_later_added_at)}`">
+            <el-icon><Collection /></el-icon>
+            <span class="info-text">加入 {{ formatDateTime(link.read_later_added_at) }}</span>
+          </span>
+        </div>
 
         <p v-if="link.description" class="card-description">
           {{ link.description }}
@@ -157,7 +172,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, Clock, CircleCheck, CircleClose, MoreFilled, Calendar, Edit } from '@element-plus/icons-vue'
+import { Document, Clock, CircleCheck, CircleClose, MoreFilled, Calendar, Edit, Link, View, Collection } from '@element-plus/icons-vue'
 import { useReadLaterStore } from '../stores/readLater'
 import { linksApi } from '../api'
 
@@ -188,6 +203,43 @@ function formatDate(dateStr) {
     month: 'long',
     day: 'numeric',
   })
+}
+
+function getDomain(url) {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url
+  }
+}
+
+// SQLite CURRENT_TIMESTAMP 存的是 UTC 时间，按 UTC 解析再转本地显示
+function parseDateTime(dateStr) {
+  return new Date(String(dateStr).replace(' ', 'T') + 'Z')
+}
+
+function formatDateTime(dateStr) {
+  if (!dateStr) return ''
+  return parseDateTime(dateStr).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatFullDateTime(dateStr) {
+  if (!dateStr) return ''
+  return parseDateTime(dateStr).toLocaleString('zh-CN')
+}
+
+async function recordVisit(link) {
+  try {
+    const { data } = await linksApi.recordVisit(link.id)
+    link.last_visited_at = data.last_visited_at
+  } catch {
+    // 记录访问失败不影响正常打开链接
+  }
 }
 
 function getEmptyDescription() {
@@ -422,6 +474,34 @@ function handlePageChange(page) {
 
 .card-title:hover {
   color: #409eff;
+}
+
+.card-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #909399;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.info-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.info-item.info-domain {
+  flex-shrink: 1;
+  overflow: hidden;
+}
+
+.info-domain .info-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .card-description {
