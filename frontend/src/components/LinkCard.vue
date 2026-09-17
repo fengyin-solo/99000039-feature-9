@@ -3,7 +3,12 @@
     <div class="card-content">
       <div class="card-header">
         <h3 class="link-title">
-          <a :href="link.url" target="_blank" rel="noopener noreferrer">{{ link.title }}</a>
+          <a
+            :href="link.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            @click="handleVisit"
+          >{{ link.title }}</a>
         </h3>
         <div class="header-actions">
           <el-tooltip :content="link.is_read_later ? '已加入稍后阅读' : '加入稍后阅读'" placement="top">
@@ -32,7 +37,24 @@
         </div>
       </div>
 
-      <p class="link-url">{{ displayUrl }}</p>
+      <div class="link-info">
+        <div class="info-row link-source">
+          <span class="info-item domain">
+            <el-icon><Link /></el-icon>
+            <span>{{ displayUrl }}</span>
+          </span>
+          <span v-if="link.is_read_later" class="info-item added-at">
+            <el-icon><Clock /></el-icon>
+            <span>加入于 {{ formatDateTime(link.read_later_added_at) }}</span>
+          </span>
+        </div>
+        <div class="info-row last-visit">
+          <el-icon><View /></el-icon>
+          <span v-if="link.last_visited_at">最近访问 {{ formatDateTime(link.last_visited_at) }}</span>
+          <span v-else class="muted">从未访问</span>
+        </div>
+      </div>
+
       <p class="link-description" v-if="link.description">{{ link.description }}</p>
 
       <div class="card-footer">
@@ -108,6 +130,21 @@ async function handleReadLater() {
   }
 }
 
+function handleVisit() {
+  const now = new Date().toISOString()
+  // Update immediately so the card reflects this visit without a full refetch.
+  props.link.last_visited_at = now
+  linksApi.recordVisit(props.link.id).catch(() => {})
+}
+
+function formatDateTime(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 function handleCommand(command) {
   if (command === 'edit') {
     emit('edit', props.link)
@@ -175,13 +212,49 @@ function handleCommand(command) {
   color: #409eff;
 }
 
-.link-url {
-  margin: 0 0 8px 0;
+.link-info {
+  margin-bottom: 8px;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 18px;
   font-size: 12px;
   color: #909399;
   overflow: hidden;
+}
+
+.info-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.info-item .el-icon {
+  flex-shrink: 0;
+}
+
+.info-item.domain span:last-child {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.added-at {
+  color: #e6a23c;
+  flex-shrink: 0;
+}
+
+.last-visit {
+  gap: 4px;
+}
+
+.last-visit .muted {
+  color: #c0c4cc;
 }
 
 .link-description {

@@ -45,6 +45,8 @@ function initDatabase() {
       last_checked DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       is_read_later INTEGER DEFAULT 0,
+      read_later_added_at DATETIME,
+      last_visited_at DATETIME,
       review_date DATETIME,
       review_status TEXT DEFAULT 'pending' CHECK(review_status IN ('pending', 'completed', 'skipped')),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

@@ -81,8 +81,19 @@ router.post('/', (req, res) => {
   const db = getDb();
 
   const result = db.prepare(
-    'INSERT INTO links (user_id, url, title, description, category_id, status, is_read_later, review_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(userId, url, title, description || '', category_id || null, 'unchecked', is_read_later ? 1 : 0, review_date || null);
+    `INSERT INTO links (user_id, url, title, description, category_id, status, is_read_later, read_later_added_at, review_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    userId,
+    url,
+    title,
+    description || '',
+    category_id || null,
+    'unchecked',
+    is_read_later ? 1 : 0,
+    is_read_later ? new Date().toISOString() : null,
+    review_date || null
+  );
 
   const linkId = result.lastInsertRowid;
 
@@ -147,15 +158,15 @@ router.get('/read-later', (req, res) => {
     FROM links l
     LEFT JOIN categories c ON l.category_id = c.id
     WHERE ${whereClause}
-    ORDER BY 
-      CASE l.review_status 
-        WHEN 'pending' THEN 1 
-        WHEN 'completed' THEN 2 
-        ELSE 3 
+    ORDER BY
+      CASE l.review_status
+        WHEN 'pending' THEN 1
+        WHEN 'completed' THEN 2
+        ELSE 3
       END,
-      l.review_date IS NULL,
-      l.review_date ASC,
-      l.created_at DESC
+      l.read_later_added_at IS NULL,
+      l.read_later_added_at ASC,
+      l.id ASC
     LIMIT ? OFFSET ?
   `;
   const links = db.prepare(sql).all(...params, Number(limit), Number(offset));
@@ -211,11 +222,15 @@ router.post('/:id/read-later', (req, res) => {
     return res.status(404).json({ error: 'Link not found' });
   }
 
+  // Keep the original join time when re-adding after a removal.
   db.prepare(`
     UPDATE links
-    SET is_read_later = 1, review_date = ?, review_status = 'pending'
+    SET is_read_later = 1,
+        read_later_added_at = COALESCE(read_later_added_at, ?),
+        review_date = ?,
+        review_status = 'pending'
     WHERE id = ?
-  `).run(review_date || null, id);
+  `).run(new Date().toISOString(), review_date || null, id);
 
   // Fetch updated link
   const updatedLink = db.prepare(`
@@ -246,6 +261,7 @@ router.delete('/:id/read-later', (req, res) => {
     return res.status(404).json({ error: 'Link not found' });
   }
 
+  // read_later_added_at is intentionally preserved so re-adding keeps the original join time.
   db.prepare(`
     UPDATE links
     SET is_read_later = 0, review_date = NULL, review_status = 'pending'
@@ -253,6 +269,26 @@ router.delete('/:id/read-later', (req, res) => {
   `).run(id);
 
   res.json({ message: 'Removed from read later list' });
+});
+
+// POST /api/links/:id/visit - Record the latest visit time for a link
+router.post('/:id/visit', (req, res) => {
+  const { id } = req.params;
+  const userId = req.userId;
+
+  const db = getDb();
+
+  const result = db.prepare(`
+    UPDATE links
+    SET last_visited_at = ?
+    WHERE id = ? AND user_id = ?
+  `).run(new Date().toISOString(), id, userId);
+
+  if (result.changes === 0) {
+    return res.status(404).json({ error: 'Link not found' });
+  }
+
+  res.json({ message: 'Visit recorded' });
 });
 
 // PUT /api/links/:id/review-status - Update review status
@@ -310,17 +346,29 @@ router.put('/:id', (req, res) => {
     return res.status(404).json({ error: 'Link not found' });
   }
 
-  // Update link
+  // Update link. Joining read later via the form also keeps the first join time.
   db.prepare(`
     UPDATE links
-    SET url = ?, title = ?, description = ?, category_id = ?, is_read_later = ?, review_date = ?, review_status = ?
+    SET url = ?,
+        title = ?,
+        description = ?,
+        category_id = ?,
+        is_read_later = ?,
+        read_later_added_at = CASE
+          WHEN ? = 1 THEN COALESCE(read_later_added_at, ?)
+          ELSE read_later_added_at
+        END,
+        review_date = ?,
+        review_status = ?
     WHERE id = ?
   `).run(
-    url || link.url, 
-    title || link.title, 
-    description ?? link.description, 
+    url || link.url,
+    title || link.title,
+    description ?? link.description,
     category_id ?? link.category_id,
     is_read_later !== undefined ? (is_read_later ? 1 : 0) : link.is_read_later,
+    is_read_later !== undefined ? (is_read_later ? 1 : 0) : link.is_read_later,
+    new Date().toISOString(),
     review_date !== undefined ? review_date : link.review_date,
     review_status || link.review_status,
     id

@@ -80,9 +80,25 @@
           </div>
         </div>
 
-        <a :href="link.url" target="_blank" class="card-title">
+        <a :href="link.url" target="_blank" class="card-title" @click="handleVisit(link)">
           {{ link.title }}
         </a>
+
+        <div class="card-source">
+          <span class="source-domain">
+            <el-icon><Link /></el-icon>
+            <span>{{ getDomain(link.url) }}</span>
+          </span>
+          <span class="added-at">
+            <el-icon><Clock /></el-icon>
+            <span>加入于 {{ formatDateTime(link.read_later_added_at) }}</span>
+          </span>
+        </div>
+        <div class="card-visit">
+          <el-icon><View /></el-icon>
+          <span v-if="link.last_visited_at">最近访问 {{ formatDateTime(link.last_visited_at) }}</span>
+          <span v-else class="muted">从未访问</span>
+        </div>
 
         <p v-if="link.description" class="card-description">
           {{ link.description }}
@@ -157,7 +173,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, Clock, CircleCheck, CircleClose, MoreFilled, Calendar, Edit } from '@element-plus/icons-vue'
+import { Document, Clock, CircleCheck, CircleClose, MoreFilled, Calendar, Edit, Link, View } from '@element-plus/icons-vue'
 import { useReadLaterStore } from '../stores/readLater'
 import { linksApi } from '../api'
 
@@ -188,6 +204,27 @@ function formatDate(dateStr) {
     month: 'long',
     day: 'numeric',
   })
+}
+
+function formatDateTime(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function getDomain(url) {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url
+  }
+}
+
+function handleVisit(link) {
+  link.last_visited_at = new Date().toISOString()
+  linksApi.recordVisit(link.id).catch(() => {})
 }
 
 function getEmptyDescription() {
@@ -422,6 +459,51 @@ function handlePageChange(page) {
 
 .card-title:hover {
   color: #409eff;
+}
+
+.card-source {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 18px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #909399;
+  overflow: hidden;
+}
+
+.card-visit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.card-visit .muted {
+  color: #c0c4cc;
+}
+
+.source-domain,
+.added-at {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.source-domain span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.added-at {
+  color: #e6a23c;
+  flex-shrink: 0;
 }
 
 .card-description {
